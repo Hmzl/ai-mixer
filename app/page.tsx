@@ -29,22 +29,6 @@ async function resultImageToBlob(result: string): Promise<Blob> {
   return res.blob();
 }
 
-async function blobToDataUrl(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = () => reject(new Error("FileReader failed"));
-    reader.readAsDataURL(blob);
-  });
-}
-
-/** Pour l’API serveur : toujours une data URL (blob/http → base64). */
-async function ensureDataUrlForApi(src: string): Promise<string> {
-  if (src.startsWith("data:")) return src;
-  const blob = await resultImageToBlob(src);
-  return blobToDataUrl(blob);
-}
-
 function openWhatsAppChat() {
   const wa = `https://wa.me/${WHATSAPP_PHONE_E164}?text=${encodeURIComponent(
     "Photo AI Mixer — joindre le fichier téléchargé (Téléchargements / Fichiers)."
@@ -151,29 +135,13 @@ export default function Home() {
     if (!shared) openWhatsAppChat();
   };
 
-  /** Enregistre le fichier, puis envoie via WhatsApp Cloud API si configuré sur le serveur ; sinon partage natif ou lien wa.me. */
-  const deliverImage = async (resultDataUrlOrUrl: string) => {
+  /** Enregistre l’image, puis ouvre WhatsApp (wa.me) ou le partage système — sans API serveur. */
+  const saveAndOpenWhatsApp = async (resultDataUrlOrUrl: string) => {
     const blob = await resultImageToBlob(resultDataUrlOrUrl);
     const ext = blob.type.includes("jpeg") ? "jpg" : "png";
     const filename = `ai-mixer-${Date.now()}.${ext}`;
 
     await downloadBlobToDevice(blob, filename);
-
-    try {
-      const imageBase64 = await ensureDataUrlForApi(resultDataUrlOrUrl);
-      const res = await fetch("/api/send-whatsapp", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageBase64 }),
-      });
-      const data = (await res.json()) as { ok?: boolean };
-      if (res.ok && data.ok === true) {
-        return;
-      }
-    } catch (e) {
-      console.warn("WhatsApp Cloud API request failed", e);
-    }
-
     await shareOrOpenWhatsAppFallback(blob, filename);
   };
 
@@ -232,7 +200,7 @@ export default function Home() {
       }
       setResult(out);
       try {
-        await deliverImage(out);
+        await saveAndOpenWhatsApp(out);
       } catch (e) {
         console.warn("Save/share failed, fallback to WhatsApp chat", e);
         openWhatsAppChat();
