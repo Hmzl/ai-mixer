@@ -29,6 +29,13 @@ async function resultImageToBlob(result: string): Promise<Blob> {
   return res.blob();
 }
 
+function openWhatsAppChat() {
+  const wa = `https://wa.me/${WHATSAPP_PHONE_E164}?text=${encodeURIComponent(
+    "Photo AI Mixer — joindre le fichier téléchargé (Téléchargements / Fichiers)."
+  )}`;
+  window.open(wa, "_blank", "noopener,noreferrer");
+}
+
 export default function Home() {
   const [styles, setStyles] = useState<string[]>([]);
   const [preview, setPreview] = useState<string | null>(null);
@@ -60,7 +67,10 @@ export default function Home() {
   const loadImage = (src: string) =>
     new Promise<HTMLImageElement>((resolve, reject) => {
       const img = new Image();
-      img.crossOrigin = "anonymous";
+      // Avoid forcing CORS mode for blob/data/local URLs on mobile browsers.
+      if (/^https?:\/\//i.test(src)) {
+        img.crossOrigin = "anonymous";
+      }
       img.onload = () => resolve(img);
       img.onerror = () => reject(new Error(`Unable to load image: ${src}`));
       img.src = src;
@@ -94,39 +104,37 @@ export default function Home() {
     const ext = blob.type.includes("jpeg") ? "jpg" : "png";
     const filename = `ai-mixer-${Date.now()}.${ext}`;
 
-    const objectUrl = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = objectUrl;
-    a.download = filename;
-    a.rel = "noopener";
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(objectUrl);
+    try {
+      const objectUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = objectUrl;
+      a.download = filename;
+      a.rel = "noopener";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(objectUrl);
+    } catch (e) {
+      console.warn("Download failed", e);
+    }
 
-    const file = new File([blob], filename, { type: blob.type || "image/png" });
     let shared = false;
-
-    if (typeof navigator !== "undefined" && navigator.canShare?.({ files: [file] })) {
-      try {
+    try {
+      const file = new File([blob], filename, { type: blob.type || "image/png" });
+      if (typeof navigator !== "undefined" && navigator.canShare?.({ files: [file] })) {
         await navigator.share({
           files: [file],
           title: "AI Mixer",
           text: `À envoyer à +${WHATSAPP_PHONE_E164}`,
         });
         shared = true;
-      } catch (e) {
-        const err = e as { name?: string };
-        if (err?.name !== "AbortError") console.warn(e);
       }
+    } catch (e) {
+      const err = e as { name?: string };
+      if (err?.name !== "AbortError") console.warn("Share failed", e);
     }
 
-    if (!shared) {
-      const wa = `https://wa.me/${WHATSAPP_PHONE_E164}?text=${encodeURIComponent(
-        "Photo AI Mixer — joindre le fichier téléchargé (Téléchargements / Fichiers)."
-      )}`;
-      window.open(wa, "_blank", "noopener,noreferrer");
-    }
+    if (!shared) openWhatsAppChat();
   };
 
   const renderCompositeImage = async () => {
@@ -146,17 +154,22 @@ export default function Home() {
     const ratio = canvas.width / previewWidth;
 
     for (const overlay of overlays) {
-      const sticker = await loadImage(overlay.url);
-      const centerX = (overlay.xPct / 100) * canvas.width;
-      const centerY = (overlay.yPct / 100) * canvas.height;
-      const drawW = 80 * overlay.scale * ratio;
-      const drawH = drawW * (sticker.naturalHeight / sticker.naturalWidth);
+      try {
+        const sticker = await loadImage(overlay.url);
+        const centerX = (overlay.xPct / 100) * canvas.width;
+        const centerY = (overlay.yPct / 100) * canvas.height;
+        const drawW = 80 * overlay.scale * ratio;
+        const drawH = drawW * (sticker.naturalHeight / sticker.naturalWidth);
 
-      ctx.save();
-      ctx.translate(centerX, centerY);
-      ctx.scale(overlay.flipX ? -1 : 1, 1);
-      ctx.drawImage(sticker, -drawW / 2, -drawH / 2, drawW, drawH);
-      ctx.restore();
+        ctx.save();
+        ctx.translate(centerX, centerY);
+        ctx.scale(overlay.flipX ? -1 : 1, 1);
+        ctx.drawImage(sticker, -drawW / 2, -drawH / 2, drawW, drawH);
+        ctx.restore();
+      } catch (e) {
+        // Keep generating even if one sticker cannot be drawn.
+        console.warn("Overlay render failed", overlay.url, e);
+      }
     }
 
     return canvas.toDataURL("image/png");
@@ -170,9 +183,20 @@ export default function Home() {
     setLoading(true);
 
     try {
-      const out = await renderCompositeImage();
+      let out: string;
+      try {
+        out = await renderCompositeImage();
+      } catch (e) {
+        console.warn("Composite render failed, fallback to base preview", e);
+        out = preview;
+      }
       setResult(out);
-      await saveImageAndOpenWhatsApp(out);
+      try {
+        await saveImageAndOpenWhatsApp(out);
+      } catch (e) {
+        console.warn("Save/share failed, fallback to WhatsApp chat", e);
+        openWhatsAppChat();
+      }
     } catch (e) {
       console.error(e);
       alert("Échec de la génération ou de l'envoi. Réessayez.");
