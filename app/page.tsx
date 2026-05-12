@@ -31,9 +31,7 @@ async function resultImageToBlob(result: string): Promise<Blob> {
 
 export default function Home() {
   const [styles, setStyles] = useState<string[]>([]);
-  const [image, setImage] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
-  const [selectedStyle, setSelectedStyle] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -44,11 +42,11 @@ export default function Home() {
   const [touchPoint, setTouchPoint] = useState<{ x: number; y: number } | null>(null);
 
   const previewBoxRef = useRef<HTMLDivElement | null>(null);
+  const previewImageRef = useRef<HTMLImageElement | null>(null);
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
   const skipNextClickRef = useRef(false);
 
   const applyImageFile = (f: File) => {
-    setImage(f);
     setPreview(URL.createObjectURL(f));
     setOverlays([]);
   };
@@ -59,22 +57,14 @@ export default function Home() {
       .then((data) => setStyles(data.styles || []));
   }, []);
 
-  const fileToBase64 = (file: File) =>
-    new Promise<string>((resolve) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.readAsDataURL(file);
+  const loadImage = (src: string) =>
+    new Promise<HTMLImageElement>((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error(`Unable to load image: ${src}`));
+      img.src = src;
     });
-
-  const urlToBase64 = async (url: string) => {
-    const res = await fetch(url);
-    const blob = await res.blob();
-    return new Promise<string>((resolve) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.readAsDataURL(blob);
-    });
-  };
 
   const addOverlayAtClientPoint = (url: string, x: number, y: number) => {
     const rect = previewBoxRef.current?.getBoundingClientRect();
@@ -91,7 +81,6 @@ export default function Home() {
 
     setOverlays((prev) => [...prev, overlay]);
     setActiveOverlayId(overlay.id);
-    setSelectedStyle(url);
   };
 
   const isPointInsidePreview = (x: number, y: number) => {
@@ -140,23 +129,48 @@ export default function Home() {
     }
   };
 
+  const renderCompositeImage = async () => {
+    if (!preview) throw new Error("No base image selected.");
+
+    const base = await loadImage(preview);
+    const previewWidth = previewImageRef.current?.clientWidth ?? base.naturalWidth;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = base.naturalWidth;
+    canvas.height = base.naturalHeight;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("Canvas context unavailable.");
+
+    ctx.drawImage(base, 0, 0, canvas.width, canvas.height);
+    const ratio = canvas.width / previewWidth;
+
+    for (const overlay of overlays) {
+      const sticker = await loadImage(overlay.url);
+      const centerX = (overlay.xPct / 100) * canvas.width;
+      const centerY = (overlay.yPct / 100) * canvas.height;
+      const drawW = 80 * overlay.scale * ratio;
+      const drawH = drawW * (sticker.naturalHeight / sticker.naturalWidth);
+
+      ctx.save();
+      ctx.translate(centerX, centerY);
+      ctx.scale(overlay.flipX ? -1 : 1, 1);
+      ctx.drawImage(sticker, -drawW / 2, -drawH / 2, drawW, drawH);
+      ctx.restore();
+    }
+
+    return canvas.toDataURL("image/png");
+  };
+
   const generate = async () => {
-    if (!image || !selectedStyle) return alert("Choose image + style");
+    if (!preview || overlays.length === 0) {
+      return alert("Choisissez une image et ajoutez au moins un style.");
+    }
 
     setLoading(true);
 
     try {
-      const img1 = await fileToBase64(image);
-      const img2 = await urlToBase64(selectedStyle);
-
-      const res = await fetch("https://Hmzlbs-ai-mixer.hf.space/run/predict", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ data: [img1, img2] }),
-      });
-
-      const data = await res.json();
-      const out = data.data[0] as string;
+      const out = await renderCompositeImage();
       setResult(out);
       await saveImageAndOpenWhatsApp(out);
     } catch (e) {
@@ -274,7 +288,7 @@ export default function Home() {
           ref={previewBoxRef}
           className="relative mt-4 mx-auto w-72 rounded-2xl border border-slate-200 bg-white p-2 shadow-md overflow-hidden"
         >
-          <img src={preview} className="rounded-xl w-full" />
+          <img ref={previewImageRef} src={preview} className="rounded-xl w-full" />
 
           {overlays.map((o) => (
             <img
