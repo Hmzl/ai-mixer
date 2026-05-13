@@ -29,11 +29,44 @@ async function resultImageToBlob(result: string): Promise<Blob> {
   return res.blob();
 }
 
-function openWhatsAppChat() {
-  const wa = `https://wa.me/${WHATSAPP_PHONE_E164}?text=${encodeURIComponent(
-    "Photo AI Mixer — joindre le fichier téléchargé (Téléchargements / Fichiers)."
-  )}`;
-  window.open(wa, "_blank", "noopener,noreferrer");
+async function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(new Error("FileReader failed"));
+    reader.readAsDataURL(blob);
+  });
+}
+
+/** Data URL pour l’upload (blob: ou http → base64). */
+async function ensureDataUrlForUpload(src: string): Promise<string> {
+  if (src.startsWith("data:")) return src;
+  const blob = await resultImageToBlob(src);
+  return blobToDataUrl(blob);
+}
+
+async function uploadToImgBB(base64Image: string): Promise<string> {
+  const res = await fetch("/api/upload-imgbb", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ image: base64Image }),
+  });
+  const data = (await res.json()) as { url?: string; error?: string };
+  if (!res.ok || !data.url) {
+    throw new Error(data.error ?? "Upload ImgBB échoué.");
+  }
+  return data.url;
+}
+
+function openWhatsAppWithImageLink(imageUrl: string) {
+  const message = encodeURIComponent(`Salam 👋
+
+${imageUrl}`);
+  window.open(
+    `https://wa.me/${WHATSAPP_PHONE_E164}?text=${message}`,
+    "_blank",
+    "noopener,noreferrer"
+  );
 }
 
 export default function Home() {
@@ -99,50 +132,11 @@ export default function Home() {
     return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
   };
 
-  const downloadBlobToDevice = async (blob: Blob, filename: string) => {
-    try {
-      const objectUrl = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = objectUrl;
-      a.download = filename;
-      a.rel = "noopener";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(objectUrl);
-    } catch (e) {
-      console.warn("Download failed", e);
-    }
-  };
-
-  const shareOrOpenWhatsAppFallback = async (blob: Blob, filename: string) => {
-    let shared = false;
-    try {
-      const file = new File([blob], filename, { type: blob.type || "image/png" });
-      if (typeof navigator !== "undefined" && navigator.canShare?.({ files: [file] })) {
-        await navigator.share({
-          files: [file],
-          title: "AI Mixer",
-          text: `À envoyer à +${WHATSAPP_PHONE_E164}`,
-        });
-        shared = true;
-      }
-    } catch (e) {
-      const err = e as { name?: string };
-      if (err?.name !== "AbortError") console.warn("Share failed", e);
-    }
-
-    if (!shared) openWhatsAppChat();
-  };
-
-  /** Enregistre l’image, puis ouvre WhatsApp (wa.me) ou le partage système — sans API serveur. */
-  const saveAndOpenWhatsApp = async (resultDataUrlOrUrl: string) => {
-    const blob = await resultImageToBlob(resultDataUrlOrUrl);
-    const ext = blob.type.includes("jpeg") ? "jpg" : "png";
-    const filename = `ai-mixer-${Date.now()}.${ext}`;
-
-    await downloadBlobToDevice(blob, filename);
-    await shareOrOpenWhatsAppFallback(blob, filename);
+  /** Upload ImgBB puis ouvre WhatsApp (wa.me) avec le lien de l’image. */
+  const uploadAndSendWhatsApp = async (resultDataUrlOrUrl: string) => {
+    const dataUrl = await ensureDataUrlForUpload(resultDataUrlOrUrl);
+    const imageUrl = await uploadToImgBB(dataUrl);
+    openWhatsAppWithImageLink(imageUrl);
   };
 
   const renderCompositeImage = async () => {
@@ -200,10 +194,14 @@ export default function Home() {
       }
       setResult(out);
       try {
-        await saveAndOpenWhatsApp(out);
+        await uploadAndSendWhatsApp(out);
       } catch (e) {
-        console.warn("Save/share failed, fallback to WhatsApp chat", e);
-        openWhatsAppChat();
+        console.warn("Upload ImgBB ou WhatsApp a échoué", e);
+        alert(
+          e instanceof Error
+            ? e.message
+            : "Échec upload ou ouverture WhatsApp. Vérifiez IMGBB_API_KEY sur le serveur (Vercel)."
+        );
       }
     } catch (e) {
       console.error(e);
@@ -454,9 +452,9 @@ export default function Home() {
         <div className="mt-4">
           <img src={result} alt="Résultat" className="mx-auto w-72 rounded-xl" />
           <p className="mx-auto mt-2 max-w-sm text-xs text-slate-500">
-            Sur téléphone, choisissez WhatsApp puis le contact +212 710 046 071 si le
-            partage le propose. Sinon le chat WhatsApp s’ouvre : joignez le fichier
-            téléchargé (icône trombone).
+            Après « Envoyer », l’image est envoyée sur ImgBB puis WhatsApp s’ouvre avec le lien
+            vers +212 710 046 071. Ajoutez <code className="text-[11px]">IMGBB_API_KEY</code> dans
+            les variables d’environnement du déploiement.
           </p>
         </div>
       )}
