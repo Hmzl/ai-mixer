@@ -240,11 +240,11 @@ export default function Home() {
 
   return (
     <main className="p-6 text-center">
-      <h1 className="text-3xl font-bold">AI Image Mixer</h1>
+      <h1 className="text-3xl font-bold">حوّل أي ديكورعادي لديكور فخم ✨</h1>
 
       <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
         <label className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm cursor-pointer hover:bg-slate-50">
-          Choisir une image
+        ختار الصورة
           <input
             type="file"
             accept="image/*"
@@ -260,8 +260,7 @@ export default function Home() {
           onClick={() => cameraInputRef.current?.click()}
           className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50"
         >
-          Prendre une photo
-        </button>
+          صوّر دابا 📸        </button>
         <input
           ref={cameraInputRef}
           type="file"
@@ -285,7 +284,7 @@ export default function Home() {
           disabled={!activeOverlayId}
           className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
         >
-          - Zoom
+          صغّر
         </button>
         <button
           type="button"
@@ -293,7 +292,7 @@ export default function Home() {
           disabled={!activeOverlayId}
           className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
         >
-          + Zoom
+          كبّر
         </button>
         <button
           type="button"
@@ -301,7 +300,7 @@ export default function Home() {
           disabled={!activeOverlayId}
           className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
         >
-          Miroir horizontal
+          قلب الشكل ↔️
         </button>
         <button
           type="button"
@@ -309,7 +308,7 @@ export default function Home() {
           disabled={!activeOverlayId}
           className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-medium text-rose-700 shadow-sm transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-40"
         >
-          Delete
+          حذف
         </button>
       </div>
 
@@ -445,16 +444,14 @@ export default function Home() {
         disabled={loading}
         className="mt-6 rounded-xl bg-blue-600 px-6 py-2 text-white disabled:cursor-not-allowed disabled:opacity-60"
       >
-        {loading ? "Envoi…" : "Envoyer"}
+        {loading ? "…هاهيا غادا" : " بغيت نديرها عندي ✨"}
       </button>
 
       {result && (
         <div className="mt-4">
           <img src={result} alt="Résultat" className="mx-auto w-72 rounded-xl" />
           <p className="mx-auto mt-2 max-w-sm text-xs text-slate-500">
-            Après « Envoyer », l’image est envoyée sur ImgBB puis WhatsApp s’ouvre avec le lien
-            vers +212 710 046 071. Ajoutez <code className="text-[11px]">IMGBB_API_KEY</code> dans
-            les variables d’environnement du déploiement.
+          ختار ...  قاد ..  صيفط 
           </p>
         </div>
       )}
