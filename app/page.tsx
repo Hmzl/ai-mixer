@@ -238,9 +238,16 @@ export default function Home() {
     );
   };
 
+  const canSend = preview !== null && overlays.length > 0;
+
   return (
-    <main className="p-6 text-center">
-      <h1 className="text-3xl font-bold">حوّل أي ديكورعادي لديكور فخم ✨</h1>
+    <main className="relative min-h-screen bg-[url('/bgsite.png')] bg-cover bg-center bg-fixed bg-no-repeat p-6 text-center">
+      <div
+        className="pointer-events-none absolute inset-0 bg-white/50"
+        aria-hidden
+      />
+      <div className="relative z-10 mx-auto max-w-lg">
+      <h1 className="text-3xl font-bold text-slate-900 drop-shadow-sm">حوّل أي ديكورعادي لديكور فخم ✨</h1>
 
       <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
         <label className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm cursor-pointer hover:bg-slate-50">
@@ -438,14 +445,16 @@ export default function Home() {
         className="mt-4"
       />
 
-      <button
-        type="button"
-        onClick={generate}
-        disabled={loading}
-        className="mt-6 rounded-xl bg-blue-600 px-6 py-2 text-white disabled:cursor-not-allowed disabled:opacity-60"
-      >
-        {loading ? "…هاهيا غادا" : " بغيت نديرها عندي ✨"}
-      </button>
+      {canSend && (
+        <button
+          type="button"
+          onClick={generate}
+          disabled={loading}
+          className="mt-6 rounded-xl bg-blue-700 px-8 py-3 text-base font-semibold text-white shadow-lg ring-2 ring-white/80 transition hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {loading ? "…هاهيا غادا" : " بغيت نديرها عندي ✨"}
+        </button>
+      )}
 
       {result && (
         <div className="mt-4">
@@ -455,6 +464,7 @@ export default function Home() {
           </p>
         </div>
       )}
+      </div>
     </main>
   );
 }
