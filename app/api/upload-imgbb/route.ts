@@ -47,11 +47,20 @@ export async function POST(req: Request) {
     { method: "POST", body: formData }
   );
 
-  const data = (await response.json()) as {
+  const rawText = await response.text();
+  let data: {
     success?: boolean;
     data?: { url?: string };
     error?: { message?: string };
   };
+  try {
+    data = JSON.parse(rawText) as typeof data;
+  } catch {
+    return NextResponse.json(
+      { error: "Réponse ImgBB non JSON." },
+      { status: 502 }
+    );
+  }
 
   if (!data.success || !data.data?.url) {
     return NextResponse.json(

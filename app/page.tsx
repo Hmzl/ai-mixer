@@ -45,13 +45,65 @@ async function ensureDataUrlForUpload(src: string): Promise<string> {
   return blobToDataUrl(blob);
 }
 
+/** Réduit la taille du corps HTTP (limite Vercel ~4.5 Mo) : max bord + JPEG. */
+function compressDataUrlForUpload(
+  dataUrl: string,
+  maxEdge = 1600,
+  jpegQuality = 0.82
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      let w = img.naturalWidth;
+      let h = img.naturalHeight;
+      if (w < 1 || h < 1) {
+        reject(new Error("Image invalide."));
+        return;
+      }
+      if (w > maxEdge || h > maxEdge) {
+        const scale = maxEdge / Math.max(w, h);
+        w = Math.round(w * scale);
+        h = Math.round(h * scale);
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        reject(new Error("Canvas indisponible."));
+        return;
+      }
+      ctx.drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL("image/jpeg", jpegQuality));
+    };
+    img.onerror = () => reject(new Error("Impossible de lire l’image."));
+    img.src = dataUrl;
+  });
+}
+
 async function uploadToImgBB(base64Image: string): Promise<string> {
   const res = await fetch("/api/upload-imgbb", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ image: base64Image }),
   });
-  const data = (await res.json()) as { url?: string; error?: string };
+
+  const text = await res.text();
+  let data: { url?: string; error?: string };
+  try {
+    data = JSON.parse(text) as { url?: string; error?: string };
+  } catch {
+    const tooLarge =
+      res.status === 413 ||
+      /request\s+entity\s+too\s+large/i.test(text) ||
+      /^request\s+entity/i.test(text.trim());
+    throw new Error(
+      tooLarge
+        ? "الصورة كبيرة بزاف على الخادم — صغّر الصورة الأصلية أو جرّب مرة أخرى."
+        : "Réponse serveur invalide (pas JSON). Réessayez ou vérifiez la connexion."
+    );
+  }
+
   if (!res.ok || !data.url) {
     throw new Error(data.error ?? "Upload ImgBB échoué.");
   }
@@ -135,7 +187,8 @@ export default function Home() {
   /** Upload ImgBB puis ouvre WhatsApp (wa.me) avec le lien de l’image. */
   const uploadAndSendWhatsApp = async (resultDataUrlOrUrl: string) => {
     const dataUrl = await ensureDataUrlForUpload(resultDataUrlOrUrl);
-    const imageUrl = await uploadToImgBB(dataUrl);
+    const compressed = await compressDataUrlForUpload(dataUrl);
+    const imageUrl = await uploadToImgBB(compressed);
     openWhatsAppWithImageLink(imageUrl);
   };
 
@@ -145,9 +198,18 @@ export default function Home() {
     const base = await loadImage(preview);
     const previewWidth = previewImageRef.current?.clientWidth ?? base.naturalWidth;
 
+    const MAX_COMPOSITE_EDGE = 2400;
+    let cw = base.naturalWidth;
+    let ch = base.naturalHeight;
+    if (cw > MAX_COMPOSITE_EDGE || ch > MAX_COMPOSITE_EDGE) {
+      const s = MAX_COMPOSITE_EDGE / Math.max(cw, ch);
+      cw = Math.round(cw * s);
+      ch = Math.round(ch * s);
+    }
+
     const canvas = document.createElement("canvas");
-    canvas.width = base.naturalWidth;
-    canvas.height = base.naturalHeight;
+    canvas.width = cw;
+    canvas.height = ch;
 
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("Canvas context unavailable.");
